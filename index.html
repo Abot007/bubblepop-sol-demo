@@ -102,7 +102,9 @@
         speed: 7,
         hitCooldown: {}, // prevents repeated hits on same enemy
         attached: false, // indicates if bullet is attached to an enemy
-        attachedTo: null
+        attachedTo: null,
+        offsetX: 0,      // will store the relative x offset on collision
+        offsetY: 0       // will store the relative y offset on collision
       });
     }
 
@@ -118,7 +120,9 @@
           speed: 10,
           hitCooldown: {},
           attached: false,
-          attachedTo: null
+          attachedTo: null,
+          offsetX: 0,
+          offsetY: 0
         });
       }
     }
@@ -166,12 +170,12 @@
         enemy.initialHits = 1;
         enemy.hitsRemaining = 1;
       } else if (type === "medium") {
-        enemy.width = 35;    // increased size from previous value
+        enemy.width = 35;
         enemy.height = 70;
         enemy.initialHits = 3;
         enemy.hitsRemaining = 3;
       } else if (type === "large") {
-        enemy.width = 50;    // increased size from previous value
+        enemy.width = 50;
         enemy.height = 100;
         enemy.initialHits = 5;
         enemy.hitsRemaining = 5;
@@ -214,6 +218,7 @@
         if (!bullet.attached) {
           bullet.y -= bullet.speed;
         }
+        // Update hit cooldown timers for this bullet
         for (let key in bullet.hitCooldown) {
           if (bullet.hitCooldown[key] > 0) {
             bullet.hitCooldown[key]--;
@@ -243,9 +248,9 @@
         if (bullet.attached) {
           let enemy = enemies.find(e => e.id === bullet.attachedTo);
           if (enemy) {
-            // Position the bullet so that its top edge touches the enemy's bottom edge
-            bullet.x = enemy.x;
-            bullet.y = enemy.y + enemy.height / 2 + bullet.height;
+            // Update bullet position using its stored offset relative to enemy center
+            bullet.x = enemy.x + bullet.offsetX;
+            bullet.y = enemy.y + bullet.offsetY;
           }
         }
         ctx.fillRect(
@@ -261,8 +266,8 @@
         if (pBullet.attached) {
           let enemy = enemies.find(e => e.id === pBullet.attachedTo);
           if (enemy) {
-            pBullet.x = enemy.x;
-            pBullet.y = enemy.y + enemy.height / 2 + pBullet.height;
+            pBullet.x = enemy.x + pBullet.offsetX;
+            pBullet.y = enemy.y + pBullet.offsetY;
           }
         }
         ctx.fillRect(
@@ -293,19 +298,20 @@
             rectIntersect(bullet, enemy) &&
             !(enemy.id in bullet.hitCooldown)
           ) {
+            // Process enemy damage based on size/type
             if (enemy.initialHits === 1) {
-              // Small enemy: one hit and immediately pushed upward
+              // Small enemy: one hit, immediately pushed upward
               enemy.hitsRemaining = 0;
               enemy.pushed = true;
               enemy.speed = enemy.upSpeed;
             } else {
-              // Medium or large enemy: decrement hits remaining
+              // Medium or large enemy
               if (enemy.hitsRemaining > 0) {
                 enemy.hitsRemaining--;
                 if (enemy.hitsRemaining > 0) {
                   enemy.speed = enemy.baseSpeed * (enemy.hitsRemaining / enemy.initialHits);
                 } else {
-                  // Final required hit: freeze the enemy
+                  // On final required hit, freeze the enemy briefly
                   enemy.freezeTimer = freezeDuration;
                   enemy.pushed = true;
                   enemy.speed = 0;
@@ -316,9 +322,11 @@
                 enemy.speed = enemy.upSpeed * Math.min(enemy.extraHits / maxExtra, 1);
               }
             }
-            // Attach the bullet so it visually stays connected
+            // Attach the bullet at its current position (store its offset relative to enemy center)
             bullet.attached = true;
             bullet.attachedTo = enemy.id;
+            bullet.offsetX = bullet.x - enemy.x;
+            bullet.offsetY = bullet.y - enemy.y;
             bullet.speed = 0; // Stop bullet independent movement
             bullet.hitCooldown[enemy.id] = 20;
           }
@@ -352,21 +360,23 @@
             }
             pBullet.attached = true;
             pBullet.attachedTo = enemy.id;
+            pBullet.offsetX = pBullet.x - enemy.x;
+            pBullet.offsetY = pBullet.y - enemy.y;
             pBullet.speed = 0;
             pBullet.hitCooldown[enemy.id] = 20;
           }
         }
 
-        // Update freeze timer for enemy
+        // Update enemy freeze timer
         if (enemy.freezeTimer > 0) {
           enemy.freezeTimer--;
         }
 
-        // Update enemy position
+        // Update enemy position: if pushed, move upward; otherwise, move downward
         if (enemy.pushed) {
-          enemy.y -= enemy.speed; // move upward
+          enemy.y -= enemy.speed;
         } else {
-          enemy.y += enemy.speed; // move downward
+          enemy.y += enemy.speed;
         }
 
         // Draw enemy as a red candlestick with a black border
