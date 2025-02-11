@@ -62,8 +62,7 @@
       y: canvas.height - 50,
       width: 40,
       height: 40,
-      charge: 0,       // Charge meter from 0 to 100
-      chargeRate: 0.1  // Increment per frame
+      charge: 0 // Charge now only increases on enemy hits.
     };
 
     // Enemy spawn settings
@@ -103,8 +102,8 @@
         hitCooldown: {}, // prevents repeated hits on same enemy
         attached: false, // indicates if bullet is attached to an enemy
         attachedTo: null,
-        offsetX: 0,      // will store the relative x offset on collision
-        offsetY: 0       // will store the relative y offset on collision
+        offsetX: 0,      // will store relative x offset at collision
+        offsetY: 0       // will store relative y offset at collision
       });
     }
 
@@ -127,29 +126,32 @@
       }
     }
 
-    // Draw the candlestick-chart style background with grid lines
+    // Draw the candlestick-chart style background
     function drawBackground() {
       ctx.fillStyle = "#000";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-
+      
       ctx.strokeStyle = "rgba(255,255,255,0.1)";
       ctx.lineWidth = 1;
-      const gridSpacing = 50;
-      for (let x = 0; x <= canvas.width; x += gridSpacing) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, canvas.height);
-        ctx.stroke();
-      }
-      for (let y = 0; y <= canvas.height; y += gridSpacing) {
+      // Horizontal grid lines every 50 pixels
+      const horizontalSpacing = 50;
+      for (let y = 0; y <= canvas.height; y += horizontalSpacing) {
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(canvas.width, y);
         ctx.stroke();
       }
+      // Vertical grid lines every 100 pixels (twice the horizontal spacing)
+      const verticalSpacing = 100;
+      for (let x = 0; x <= canvas.width; x += verticalSpacing) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
     }
 
-    // Spawn an enemy with random size: small, medium, or large
+    // Spawn an enemy with random size and assign a color for debugging
     function spawnEnemy() {
       const sizeTypes = ["small", "medium", "large"];
       const type = sizeTypes[Math.floor(Math.random() * sizeTypes.length)];
@@ -161,24 +163,29 @@
         baseSpeed: 1,  // downward speed before being hit
         upSpeed: 5,    // maximum upward speed
         freezeTimer: 0, // frames to pause when fully hit (for medium/large)
-        extraHits: 0    // count of hits beyond the required final hit
+        extraHits: 0,    // count of hits beyond the required final hit
+        type: type       // store type for later if needed
       };
 
+      // Assign size and color based on type
       if (type === "small") {
         enemy.width = 20;
         enemy.height = 40;
         enemy.initialHits = 1;
         enemy.hitsRemaining = 1;
+        enemy.color = "blue";
       } else if (type === "medium") {
         enemy.width = 35;
         enemy.height = 70;
         enemy.initialHits = 3;
         enemy.hitsRemaining = 3;
+        enemy.color = "purple";
       } else if (type === "large") {
         enemy.width = 50;
         enemy.height = 100;
         enemy.initialHits = 5;
         enemy.hitsRemaining = 5;
+        enemy.color = "green";
       }
       enemy.speed = enemy.baseSpeed;
       return enemy;
@@ -198,11 +205,9 @@
     function update() {
       drawBackground();
 
-      // Update player's charge meter
-      if (player.charge < 100) {
-        player.charge += player.chargeRate;
-        if (player.charge > 100) player.charge = 100;
-      }
+      // (No time-based charge accumulation; charge only increases on hits.)
+
+      // Draw charge bar based on player's charge
       document.getElementById("chargeFill").style.width = player.charge + "%";
 
       // Spawn enemies periodically
@@ -218,7 +223,6 @@
         if (!bullet.attached) {
           bullet.y -= bullet.speed;
         }
-        // Update hit cooldown timers for this bullet
         for (let key in bullet.hitCooldown) {
           if (bullet.hitCooldown[key] > 0) {
             bullet.hitCooldown[key]--;
@@ -248,7 +252,7 @@
         if (bullet.attached) {
           let enemy = enemies.find(e => e.id === bullet.attachedTo);
           if (enemy) {
-            // Update bullet position using its stored offset relative to enemy center
+            // Position the bullet using its stored offset
             bullet.x = enemy.x + bullet.offsetX;
             bullet.y = enemy.y + bullet.offsetY;
           }
@@ -298,20 +302,23 @@
             rectIntersect(bullet, enemy) &&
             !(enemy.id in bullet.hitCooldown)
           ) {
-            // Process enemy damage based on size/type
+            // Increase player's charge when a bullet hits an enemy
+            player.charge += 20;
+            if (player.charge > 100) player.charge = 100;
+
             if (enemy.initialHits === 1) {
-              // Small enemy: one hit, immediately pushed upward
+              // Small enemy: one hit, immediately knocked back
               enemy.hitsRemaining = 0;
               enemy.pushed = true;
               enemy.speed = enemy.upSpeed;
             } else {
-              // Medium or large enemy
+              // Medium or large enemy: decrement hitsRemaining
               if (enemy.hitsRemaining > 0) {
                 enemy.hitsRemaining--;
                 if (enemy.hitsRemaining > 0) {
                   enemy.speed = enemy.baseSpeed * (enemy.hitsRemaining / enemy.initialHits);
                 } else {
-                  // On final required hit, freeze the enemy briefly
+                  // Final required hit: freeze the enemy briefly
                   enemy.freezeTimer = freezeDuration;
                   enemy.pushed = true;
                   enemy.speed = 0;
@@ -322,42 +329,27 @@
                 enemy.speed = enemy.upSpeed * Math.min(enemy.extraHits / maxExtra, 1);
               }
             }
-            // Attach the bullet at its current position (store its offset relative to enemy center)
+            // Attach the bullet at its current collision position.
             bullet.attached = true;
             bullet.attachedTo = enemy.id;
             bullet.offsetX = bullet.x - enemy.x;
             bullet.offsetY = bullet.y - enemy.y;
-            bullet.speed = 0; // Stop bullet independent movement
+            bullet.speed = 0;
             bullet.hitCooldown[enemy.id] = 20;
           }
         }
-        // Process collisions with power bullets
+        // Process collisions with power bullets (unstoppable blast)
         for (let pBullet of powerBullets) {
           if (
             !pBullet.attached &&
             rectIntersect(pBullet, enemy) &&
             !(enemy.id in pBullet.hitCooldown)
           ) {
-            if (enemy.initialHits === 1) {
-              enemy.hitsRemaining = 0;
-              enemy.pushed = true;
-              enemy.speed = enemy.upSpeed;
-            } else {
-              if (enemy.hitsRemaining > 0) {
-                enemy.hitsRemaining--;
-                if (enemy.hitsRemaining > 0) {
-                  enemy.speed = enemy.baseSpeed * (enemy.hitsRemaining / enemy.initialHits);
-                } else {
-                  enemy.freezeTimer = freezeDuration;
-                  enemy.pushed = true;
-                  enemy.speed = 0;
-                }
-              } else if (enemy.hitsRemaining <= 0 && enemy.freezeTimer <= 0) {
-                enemy.extraHits = (enemy.extraHits || 0) + 1;
-                let maxExtra = (enemy.initialHits === 3) ? 3 : 5;
-                enemy.speed = enemy.upSpeed * Math.min(enemy.extraHits / maxExtra, 1);
-              }
-            }
+            // With power bullets, immediately knock the enemy back:
+            enemy.hitsRemaining = 0;
+            enemy.pushed = true;
+            enemy.speed = enemy.upSpeed;  // set to full upward speed
+
             pBullet.attached = true;
             pBullet.attachedTo = enemy.id;
             pBullet.offsetX = pBullet.x - enemy.x;
@@ -372,15 +364,15 @@
           enemy.freezeTimer--;
         }
 
-        // Update enemy position: if pushed, move upward; otherwise, move downward
+        // Update enemy position: if pushed, move upward; otherwise, move downward.
         if (enemy.pushed) {
           enemy.y -= enemy.speed;
         } else {
           enemy.y += enemy.speed;
         }
 
-        // Draw enemy as a red candlestick with a black border
-        ctx.fillStyle = "red";
+        // Draw enemy using its designated color with a black border.
+        ctx.fillStyle = enemy.color;
         ctx.fillRect(
           enemy.x - enemy.width / 2,
           enemy.y - enemy.height / 2,
@@ -396,7 +388,7 @@
           enemy.height
         );
 
-        // Remove enemy if it moves off-screen
+        // Remove enemy if off-screen
         if (enemy.y + enemy.height < 0 || enemy.y - enemy.height > canvas.height) {
           enemies.splice(i, 1);
         }
