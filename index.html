@@ -26,7 +26,7 @@
       background: lime;
       width: 0%;
     }
-    /* Hide the context menu for right-click */
+    /* Disable context menu on canvas */
     canvas {
       -webkit-touch-callout: none;
       -webkit-user-select: none;
@@ -50,27 +50,30 @@
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    // Game state arrays
-    let bullets = [];
-    let powerBullets = [];
+    // Arrays for game objects
+    let bullets = [];       // regular (green) bullets
+    let powerBullets = [];  // power-up (cyan) bullets
     let enemies = [];
-    let enemyCounter = 0; // To assign unique IDs
+    let enemyCounter = 0;   // unique enemy IDs
 
-    // Player object (crypto influencer)
+    // Player (crypto influencer) definition
     const player = {
       x: canvas.width / 2,
       y: canvas.height - 50,
       width: 40,
       height: 40,
-      charge: 0,       // Charge meter (0–100)
-      chargeRate: 0.1  // Amount added per frame
+      charge: 0,       // Charge meter from 0 to 100
+      chargeRate: 0.1  // Increment per frame
     };
 
-    // Enemy spawn timing
+    // Enemy spawn settings
     let enemySpawnTimer = 0;
     const enemySpawnInterval = 80; // frames between spawns
 
-    // Listen for mouse movement: update player X position
+    // Freeze duration for medium/large enemies (in frames)
+    const freezeDuration = 30;
+
+    // Listen for mouse movement to control the player horizontally
     document.addEventListener("mousemove", function (e) {
       player.x = Math.min(
         Math.max(e.clientX, player.width / 2),
@@ -78,18 +81,18 @@
       );
     });
 
-    // Left-click fires a regular (green) bullet
+    // Left-click: fire a regular bullet
     document.addEventListener("click", function (e) {
       fireBullet();
     });
 
-    // Right-click fires a power-up shot (if charged)
+    // Right-click: fire a power-up shot (if charged)
     document.addEventListener("contextmenu", function (e) {
       e.preventDefault();
       firePowerShot();
     });
 
-    // Function to fire a regular bullet (green candlestick)
+    // Fire a regular (green) bullet
     function fireBullet() {
       bullets.push({
         x: player.x,
@@ -97,12 +100,14 @@
         width: 8,
         height: 20,
         speed: 7,
-        // To prevent repeatedly hitting the same enemy:
-        hitCooldown: {} // will hold enemyID: cooldownFrames
+        // To prevent repeated hits on the same enemy
+        hitCooldown: {},
+        attached: false, // indicates if bullet is attached to an enemy
+        attachedTo: null // enemy id to which it is attached
       });
     }
 
-    // Function to fire a power-up bullet (power shot)
+    // Fire a power-up bullet (cyan) if fully charged
     function firePowerShot() {
       if (player.charge >= 100) {
         player.charge = 0;
@@ -112,29 +117,27 @@
           width: 16,
           height: 40,
           speed: 10,
-          hitCooldown: {}
+          hitCooldown: {},
+          attached: false,
+          attachedTo: null
         });
       }
     }
 
-    // Helper: Draw background grid resembling a candlestick chart
+    // Draw the candlestick-chart style background with grid lines
     function drawBackground() {
-      // Fill background (black)
       ctx.fillStyle = "#000";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Draw grid lines
       ctx.strokeStyle = "rgba(255,255,255,0.1)";
       ctx.lineWidth = 1;
       const gridSpacing = 50;
-      // Vertical lines
       for (let x = 0; x <= canvas.width; x += gridSpacing) {
         ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, canvas.height);
         ctx.stroke();
       }
-      // Horizontal lines
       for (let y = 0; y <= canvas.height; y += gridSpacing) {
         ctx.beginPath();
         ctx.moveTo(0, y);
@@ -143,7 +146,7 @@
       }
     }
 
-    // Spawn an enemy with a random size
+    // Spawn an enemy with random size: small, medium, or large
     function spawnEnemy() {
       const sizeTypes = ["small", "medium", "large"];
       const type = sizeTypes[Math.floor(Math.random() * sizeTypes.length)];
@@ -151,9 +154,11 @@
         id: enemyCounter++,
         x: Math.random() * (canvas.width - 60) + 30,
         y: -50,
-        pushed: false,
-        baseSpeed: 1,
-        upSpeed: 5
+        pushed: false, // whether the enemy is being pushed upward
+        baseSpeed: 1,  // downward speed before being hit
+        upSpeed: 5,    // maximum upward speed
+        freezeTimer: 0, // frames to pause when fully hit (for medium/large)
+        extraHits: 0    // count of hits beyond the required final hit
       };
 
       if (type === "small") {
@@ -172,7 +177,7 @@
         enemy.initialHits = 5;
         enemy.hitsRemaining = 5;
       }
-      // Start with the base speed (for downward movement)
+      // Start with downward speed
       enemy.speed = enemy.baseSpeed;
       return enemy;
     }
@@ -187,9 +192,9 @@
       );
     }
 
-    // Update game objects each frame
+    // Main update loop
     function update() {
-      // Draw the background grid first
+      // Draw background grid first
       drawBackground();
 
       // Update player's charge meter
@@ -206,11 +211,13 @@
         enemies.push(spawnEnemy());
       }
 
-      // Update bullets: move upward and handle hit cooldowns
+      // Update bullets (if not attached, move upward; if attached, follow enemy)
       for (let i = bullets.length - 1; i >= 0; i--) {
         let bullet = bullets[i];
-        bullet.y -= bullet.speed;
-        // Update cooldown timers for each enemy hit by this bullet
+        if (!bullet.attached) {
+          bullet.y -= bullet.speed;
+        }
+        // Update cooldowns per enemy id
         for (let key in bullet.hitCooldown) {
           if (bullet.hitCooldown[key] > 0) {
             bullet.hitCooldown[key]--;
@@ -219,11 +226,12 @@
           }
         }
       }
-
-      // Update power bullets similarly
+      // Similarly for power bullets
       for (let i = powerBullets.length - 1; i >= 0; i--) {
         let pBullet = powerBullets[i];
-        pBullet.y -= pBullet.speed;
+        if (!pBullet.attached) {
+          pBullet.y -= pBullet.speed;
+        }
         for (let key in pBullet.hitCooldown) {
           if (pBullet.hitCooldown[key] > 0) {
             pBullet.hitCooldown[key]--;
@@ -233,9 +241,18 @@
         }
       }
 
-      // Draw bullets (green candlesticks) underneath enemies
+      // Draw bullets (green) – if attached, update their position relative to the enemy
       ctx.fillStyle = "lime";
       for (let bullet of bullets) {
+        if (bullet.attached) {
+          // Find the enemy with this id
+          let enemy = enemies.find(e => e.id === bullet.attachedTo);
+          if (enemy) {
+            // Position bullet so that its top edge touches enemy's bottom edge
+            bullet.x = enemy.x; 
+            bullet.y = enemy.y + enemy.height / 2 + bullet.height;
+          }
+        }
         ctx.fillRect(
           bullet.x - bullet.width / 2,
           bullet.y - bullet.height,
@@ -243,9 +260,16 @@
           bullet.height
         );
       }
-      // Draw power bullets (using cyan color)
+      // Draw power bullets (cyan)
       ctx.fillStyle = "cyan";
       for (let pBullet of powerBullets) {
+        if (pBullet.attached) {
+          let enemy = enemies.find(e => e.id === pBullet.attachedTo);
+          if (enemy) {
+            pBullet.x = enemy.x;
+            pBullet.y = enemy.y + enemy.height / 2 + pBullet.height;
+          }
+        }
         ctx.fillRect(
           pBullet.x - pBullet.width / 2,
           pBullet.y - pBullet.height,
@@ -254,7 +278,7 @@
         );
       }
 
-      // Draw the player (as a yellow square)
+      // Draw player (yellow square)
       ctx.fillStyle = "yellow";
       ctx.fillRect(
         player.x - player.width / 2,
@@ -263,53 +287,88 @@
         player.height
       );
 
-      // Update and draw enemies
+      // Process enemies
       for (let i = enemies.length - 1; i >= 0; i--) {
         let enemy = enemies[i];
 
-        // Check collision with regular bullets
+        // Process collisions with regular bullets
         for (let bullet of bullets) {
-          if (
-            rectIntersect(bullet, enemy) &&
-            !(enemy.id in bullet.hitCooldown)
-          ) {
-            // Register hit: decrement hitsRemaining
-            enemy.hitsRemaining--;
-            // Set a cooldown for this bullet on this enemy (e.g., 20 frames)
-            bullet.hitCooldown[enemy.id] = 20;
-
-            // If enemy is not yet fully damaged, slow it down proportionally.
-            if (enemy.hitsRemaining > 0) {
-              enemy.speed = enemy.baseSpeed * (enemy.hitsRemaining / enemy.initialHits);
-            } else {
-              // When final hit occurs, mark enemy as pushed and set upward speed.
+          // Only process if bullet is not yet attached and if enemy not on cooldown for this bullet
+          if (!bullet.attached && rectIntersect(bullet, enemy) && !(enemy.id in bullet.hitCooldown)) {
+            // For small enemies, immediately push upward.
+            if (enemy.initialHits === 1) {
+              enemy.hitsRemaining = 0;
               enemy.pushed = true;
               enemy.speed = enemy.upSpeed;
+            } else {
+              // For medium and large:
+              if (enemy.hitsRemaining > 0) {
+                enemy.hitsRemaining--;
+                // If not yet fully damaged, slow down proportionally:
+                if (enemy.hitsRemaining > 0) {
+                  enemy.speed = enemy.baseSpeed * (enemy.hitsRemaining / enemy.initialHits);
+                } else {
+                  // On the final required hit, freeze the enemy
+                  enemy.freezeTimer = freezeDuration;
+                  enemy.pushed = true;
+                  enemy.speed = 0;
+                }
+              } else if (enemy.hitsRemaining <= 0 && enemy.freezeTimer <= 0) {
+                // If enemy is frozen and extra hits come in after freeze, count them
+                enemy.extraHits = (enemy.extraHits || 0) + 1;
+                // Gradually increase upward speed proportionally to extra hits
+                // Here, for medium, assume maximum extra hits of 3; for large, maximum of 5
+                let maxExtra = (enemy.initialHits === 3) ? 3 : 5;
+                enemy.speed = enemy.upSpeed * Math.min(enemy.extraHits / maxExtra, 1);
+              }
             }
+            // Attach the bullet to the enemy so it sticks
+            bullet.attached = true;
+            bullet.attachedTo = enemy.id;
+            // Set a cooldown so the same bullet doesn't register multiple collisions immediately.
+            bullet.hitCooldown[enemy.id] = 20;
           }
         }
-        // Check collision with power bullets
+        // Process collisions with power bullets (same logic applies)
         for (let pBullet of powerBullets) {
-          if (
-            rectIntersect(pBullet, enemy) &&
-            !(enemy.id in pBullet.hitCooldown)
-          ) {
-            enemy.hitsRemaining--;
-            pBullet.hitCooldown[enemy.id] = 20;
-            if (enemy.hitsRemaining > 0) {
-              enemy.speed = enemy.baseSpeed * (enemy.hitsRemaining / enemy.initialHits);
-            } else {
+          if (!pBullet.attached && rectIntersect(pBullet, enemy) && !(enemy.id in pBullet.hitCooldown)) {
+            if (enemy.initialHits === 1) {
+              enemy.hitsRemaining = 0;
               enemy.pushed = true;
               enemy.speed = enemy.upSpeed;
+            } else {
+              if (enemy.hitsRemaining > 0) {
+                enemy.hitsRemaining--;
+                if (enemy.hitsRemaining > 0) {
+                  enemy.speed = enemy.baseSpeed * (enemy.hitsRemaining / enemy.initialHits);
+                } else {
+                  enemy.freezeTimer = freezeDuration;
+                  enemy.pushed = true;
+                  enemy.speed = 0;
+                }
+              } else if (enemy.hitsRemaining <= 0 && enemy.freezeTimer <= 0) {
+                enemy.extraHits = (enemy.extraHits || 0) + 1;
+                let maxExtra = (enemy.initialHits === 3) ? 3 : 5;
+                enemy.speed = enemy.upSpeed * Math.min(enemy.extraHits / maxExtra, 1);
+              }
             }
+            pBullet.attached = true;
+            pBullet.attachedTo = enemy.id;
+            pBullet.hitCooldown[enemy.id] = 20;
           }
+        }
+
+        // Update freeze timer if enemy is frozen
+        if (enemy.freezeTimer > 0) {
+          enemy.freezeTimer--;
+          // While frozen, enemy.speed remains 0
         }
 
         // Update enemy position:
         if (enemy.pushed) {
-          enemy.y -= enemy.speed; // move upward when pushed
+          enemy.y -= enemy.speed; // move upward
         } else {
-          enemy.y += enemy.speed; // descend normally
+          enemy.y += enemy.speed; // move downward
         }
 
         // Draw enemy as a red candlestick with a black border
@@ -329,7 +388,7 @@
           enemy.height
         );
 
-        // Remove enemy if off screen (above or below)
+        // Remove enemy if off-screen (above or below)
         if (enemy.y + enemy.height < 0 || enemy.y - enemy.height > canvas.height) {
           enemies.splice(i, 1);
         }
@@ -338,7 +397,7 @@
       requestAnimationFrame(update);
     }
 
-    // Start the game loop
+    // Start game loop
     update();
 
     // Resize canvas on window resize
