@@ -2,113 +2,226 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BubblePop Sol</title>
-  <!-- BubblePop Sol CSS -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Crypto Invaders</title>
   <style>
-    /* Container for bubbles */
-    #bubble-container {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        pointer-events: none; /* Allow clicks to pass through except on bubbles */
-        z-index: 500;
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+      color: #fff;
+      font-family: sans-serif;
     }
-    /* Bubble styling */
-    .bubble {
-        position: absolute;
-        border-radius: 50%;
-        background: rgba(135, 206, 250, 0.5); /* light pastel blue */
-        animation: floatUp 3s linear forwards;
-        pointer-events: auto; /* Allow bubble to be clicked */
-        cursor: pointer;
+    #chargeBar {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      width: 200px;
+      height: 20px;
+      background: #333;
+      border: 1px solid #fff;
     }
-    /* Bubble float animation */
-    @keyframes floatUp {
-        0% { transform: translateY(0); opacity: 1; }
-        100% { transform: translateY(-200px); opacity: 0; }
-    }
-    /* Style for the Simulate Buy button */
-    #simulate-buy {
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        z-index: 1000;
-        padding: 10px 20px;
-        font-size: 16px;
+    #chargeFill {
+      height: 100%;
+      background: lime;
+      width: 0%;
     }
   </style>
 </head>
 <body>
-  <!-- Bubble container -->
-  <div id="bubble-container"></div>
-  
-  <!-- Simulate Buy Button -->
-  <button id="simulate-buy">Simulate Buy</button>
-  
-  <!-- Pop sound (ensure the URL is valid; you can replace it with your own) -->
-  <audio id="pop-sound" src="https://www.soundjay.com/buttons/sounds/button-16.mp3" preload="auto"></audio>
-  
-  <!-- JavaScript -->
+  <canvas id="gameCanvas"></canvas>
+  <div id="chargeBar">
+    <div id="chargeFill"></div>
+  </div>
+
   <script>
-    // Function to create a bubble at a specific (x,y) coordinate.
-    function createBubble(x, y) {
-        var bubble = document.createElement('div');
-        bubble.className = 'bubble';
-        var size = Math.random() * 50 + 20; // random size between 20px and 70px
-        bubble.style.width = size + 'px';
-        bubble.style.height = size + 'px';
-        bubble.style.left = (x - size / 2) + 'px';
-        bubble.style.top = y + 'px';
-  
-        // Add click handler to pop the bubble
-        bubble.addEventListener('click', function(e) {
-            e.stopPropagation(); // prevent triggering other events
-            popBubble(bubble);
-        });
-  
-        document.getElementById('bubble-container').appendChild(bubble);
-  
-        // Remove the bubble after its animation duration
-        setTimeout(function() {
-            bubble.remove();
-        }, 3000);
-    }
-  
-    // Function to "pop" a bubble: play sound, animate pop, then remove.
-    function popBubble(bubble) {
-        var sound = document.getElementById('pop-sound');
-        sound.currentTime = 0;
-        sound.play();
-  
-        bubble.style.transition = 'transform 0.2s, opacity 0.2s';
-        bubble.style.transform = 'scale(1.5)';
-        bubble.style.opacity = '0';
-  
-        setTimeout(function() {
-            bubble.remove();
-        }, 200);
-    }
-  
-    // Simulate a token buy event: cascade of bubbles.
-    document.getElementById('simulate-buy').addEventListener('click', function(e) {
-        e.stopPropagation();
-        for (let i = 0; i < 10; i++) {
-            setTimeout(function() {
-                var x = Math.random() * window.innerWidth;
-                var y = window.innerHeight; // start at bottom
-                createBubble(x, y);
-            }, i * 100);
-        }
+    // Get canvas and context
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // Game state arrays
+    let bullets = [];
+    let enemies = [];
+    let powerBullets = [];
+
+    // Player object (our meme character)
+    const player = {
+      x: canvas.width / 2,
+      y: canvas.height - 50,
+      width: 40,
+      height: 40,
+      // A simple charge meter for the power-up shot:
+      charge: 0,  // ranges from 0 to 100
+      chargeRate: 0.05  // amount added per frame (adjust as needed)
+    };
+
+    // For spawning enemies
+    let enemySpawnTimer = 0;
+    const enemySpawnInterval = 100; // frames between spawns
+
+    // Listen for mouse movement
+    document.addEventListener("mousemove", function(e) {
+      // Constrain the player to canvas bounds
+      player.x = Math.min(Math.max(e.clientX, player.width/2), canvas.width - player.width/2);
     });
-  
-    // Optional: Create a bubble wherever the user clicks on the page.
-    document.addEventListener('click', function(e) {
-        // Do not create a bubble when clicking the "Simulate Buy" button.
-        if (e.target.id === 'simulate-buy') return;
-        createBubble(e.pageX, e.pageY);
+
+    // Listen for left-click (fire regular bullet)
+    document.addEventListener("click", function(e) {
+      fireBullet();
+    });
+
+    // Listen for right-click (power-up shot)
+    document.addEventListener("contextmenu", function(e) {
+      e.preventDefault(); // Prevent context menu from appearing
+      firePowerShot();
+    });
+
+    // Function to fire a regular bullet
+    function fireBullet() {
+      bullets.push({
+        x: player.x,
+        y: player.y - player.height / 2,
+        width: 8,
+        height: 20,
+        speed: 7
+      });
+    }
+
+    // Function to fire a power-up bullet if charged
+    function firePowerShot() {
+      if (player.charge >= 100) {
+        // Reset charge
+        player.charge = 0;
+        // Fire a larger, more powerful bullet
+        powerBullets.push({
+          x: player.x,
+          y: player.y - player.height / 2,
+          width: 16,
+          height: 40,
+          speed: 10
+        });
+      }
+    }
+
+    // Game loop
+    function update() {
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Update player's charge meter
+      if (player.charge < 100) {
+        player.charge += player.chargeRate;
+        if (player.charge > 100) player.charge = 100;
+      }
+      document.getElementById("chargeFill").style.width = player.charge + "%";
+
+      // Draw the player (placeholder – you could replace this with an image)
+      ctx.fillStyle = "yellow";
+      ctx.fillRect(player.x - player.width/2, player.y - player.height/2, player.width, player.height);
+
+      // Spawn enemies (red candlesticks)
+      enemySpawnTimer++;
+      if (enemySpawnTimer >= enemySpawnInterval) {
+        enemySpawnTimer = 0;
+        // Enemies spawn at a random X position at the top
+        enemies.push({
+          x: Math.random() * (canvas.width - 30) + 15,
+          y: -20,
+          width: 20,
+          height: 40,
+          speed: 1,   // initial descent speed
+          pushed: false  // flag for when hit
+        });
+      }
+
+      // Update and draw enemies
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        let enemy = enemies[i];
+        // If enemy was hit, push upward faster; otherwise, move downward slowly
+        if (enemy.pushed) {
+          enemy.y -= 5;
+        } else {
+          enemy.y += enemy.speed;
+        }
+        // Draw enemy as a red candlestick
+        ctx.fillStyle = "red";
+        ctx.fillRect(enemy.x - enemy.width/2, enemy.y - enemy.height/2, enemy.width, enemy.height);
+
+        // Remove enemy if off screen
+        if (enemy.y + enemy.height < 0 || enemy.y - enemy.height > canvas.height) {
+          enemies.splice(i, 1);
+        }
+      }
+
+      // Update and draw regular bullets (green candlesticks)
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        let bullet = bullets[i];
+        bullet.y -= bullet.speed;
+        ctx.fillStyle = "lime";
+        ctx.fillRect(bullet.x - bullet.width/2, bullet.y - bullet.height, bullet.width, bullet.height);
+        
+        // Remove bullet if off screen
+        if (bullet.y + bullet.height < 0) {
+          bullets.splice(i, 1);
+          continue;
+        }
+        
+        // Check collision with enemies
+        for (let j = enemies.length - 1; j >= 0; j--) {
+          let enemy = enemies[j];
+          if (rectIntersect(bullet, enemy)) {
+            // Mark enemy as hit so it gets pushed upward.
+            enemy.pushed = true;
+            // Remove bullet upon hit
+            bullets.splice(i, 1);
+            break;
+          }
+        }
+      }
+
+      // Update and draw power-up bullets
+      for (let i = powerBullets.length - 1; i >= 0; i--) {
+        let pBullet = powerBullets[i];
+        pBullet.y -= pBullet.speed;
+        ctx.fillStyle = "cyan";
+        ctx.fillRect(pBullet.x - pBullet.width/2, pBullet.y - pBullet.height, pBullet.width, pBullet.height);
+
+        // Remove if off screen
+        if (pBullet.y + pBullet.height < 0) {
+          powerBullets.splice(i, 1);
+          continue;
+        }
+
+        // Check collision with enemies (power bullet can affect multiple enemies)
+        for (let j = enemies.length - 1; j >= 0; j--) {
+          let enemy = enemies[j];
+          if (rectIntersect(pBullet, enemy)) {
+            enemy.pushed = true;
+            // Optionally, you could also reduce the power bullet's "power" (or remove it) after hitting a few enemies.
+          }
+        }
+      }
+
+      requestAnimationFrame(update);
+    }
+
+    // Simple rectangle collision detection
+    function rectIntersect(a, b) {
+      return !(a.x + a.width/2 < b.x - b.width/2 ||
+               a.x - a.width/2 > b.x + b.width/2 ||
+               a.y < b.y - b.height/2 ||
+               a.y - a.height > b.y + b.height/2);
+    }
+
+    // Start the game loop
+    update();
+
+    // Resize canvas on window resize
+    window.addEventListener("resize", function() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
     });
   </script>
 </body>
