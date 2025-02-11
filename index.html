@@ -51,9 +51,9 @@
     canvas.height = window.innerHeight;
 
     // Arrays for game objects
-    let bullets = [];       // regular (green) bullets
+    let bullets = [];       // regular (green) bullets (shooting candlesticks)
     let powerBullets = [];  // power-up (cyan) bullets
-    let enemies = [];
+    let enemies = [];       // dropping candlesticks (enemies)
     let enemyCounter = 0;   // unique enemy IDs
 
     // Player (crypto influencer) definition
@@ -62,7 +62,7 @@
       y: canvas.height - 50,
       width: 40,
       height: 40,
-      charge: 0 // Charge now only increases on enemy hits.
+      charge: 0 // Charge increases only on enemy hits.
     };
 
     // Enemy spawn settings
@@ -91,7 +91,7 @@
       firePowerShot();
     });
 
-    // Fire a regular (green) bullet
+    // Fire a regular (green) bullet (shooting candlestick)
     function fireBullet() {
       bullets.push({
         x: player.x,
@@ -99,15 +99,15 @@
         width: 8,
         height: 20,
         speed: 7,
-        hitCooldown: {}, // prevents repeated hits on same enemy
-        attached: false, // indicates if bullet is attached to an enemy
+        hitCooldown: {}, // prevents repeated hits on the same enemy
+        attached: false, // indicates if the bullet is attached to an enemy
         attachedTo: null,
-        offsetX: 0,      // will store relative x offset at collision
-        offsetY: 0       // will store relative y offset at collision
+        offsetX: 0,      // will store the relative x offset upon collision
+        offsetY: 0       // will store the relative y offset upon collision
       });
     }
 
-    // Fire a power-up bullet (cyan) if fully charged
+    // Fire a power-up bullet (cyan) if fully charged (knocks back enemy)
     function firePowerShot() {
       if (player.charge >= 100) {
         player.charge = 0;
@@ -141,7 +141,7 @@
         ctx.lineTo(canvas.width, y);
         ctx.stroke();
       }
-      // Vertical grid lines every 100 pixels (twice the horizontal spacing)
+      // Vertical grid lines every 100 pixels (wider than horizontal)
       const verticalSpacing = 100;
       for (let x = 0; x <= canvas.width; x += verticalSpacing) {
         ctx.beginPath();
@@ -151,7 +151,7 @@
       }
     }
 
-    // Spawn an enemy with random size and assign a color for debugging
+    // Spawn an enemy (dropping candlestick) with random type
     function spawnEnemy() {
       const sizeTypes = ["small", "medium", "large"];
       const type = sizeTypes[Math.floor(Math.random() * sizeTypes.length)];
@@ -159,33 +159,34 @@
         id: enemyCounter++,
         x: Math.random() * (canvas.width - 60) + 30,
         y: -50,
-        pushed: false, // whether the enemy is being pushed upward
-        baseSpeed: 1,  // downward speed before being hit
-        upSpeed: 5,    // maximum upward speed
-        freezeTimer: 0, // frames to pause when fully hit (for medium/large)
+        pushed: false,   // whether the enemy is being pushed upward
+        baseSpeed: 1,    // downward speed before being hit
+        upSpeed: 5,      // maximum upward speed (will override for small)
+        freezeTimer: 0,  // frames to pause when fully hit (for medium/large)
         extraHits: 0,    // count of hits beyond the required final hit
-        type: type       // store type for later if needed
+        type: type       // store type for reference
       };
 
-      // Assign size and color based on type
+      // Assign size, required hits, and color based on type
       if (type === "small") {
         enemy.width = 20;
         enemy.height = 40;
         enemy.initialHits = 1;
         enemy.hitsRemaining = 1;
-        enemy.color = "blue";
+        enemy.color = "purple"; // small enemy: purple
+        enemy.upSpeed = 2;      // slower upward speed so they remain visible
       } else if (type === "medium") {
         enemy.width = 35;
         enemy.height = 70;
         enemy.initialHits = 3;
         enemy.hitsRemaining = 3;
-        enemy.color = "purple";
+        enemy.color = "orange"; // medium enemy: orange
       } else if (type === "large") {
         enemy.width = 50;
         enemy.height = 100;
         enemy.initialHits = 5;
         enemy.hitsRemaining = 5;
-        enemy.color = "green";
+        enemy.color = "blue";   // large enemy: blue
       }
       enemy.speed = enemy.baseSpeed;
       return enemy;
@@ -205,9 +206,7 @@
     function update() {
       drawBackground();
 
-      // (No time-based charge accumulation; charge only increases on hits.)
-
-      // Draw charge bar based on player's charge
+      // Update and display player's charge (charge only increases on enemy hit)
       document.getElementById("chargeFill").style.width = player.charge + "%";
 
       // Spawn enemies periodically
@@ -223,6 +222,7 @@
         if (!bullet.attached) {
           bullet.y -= bullet.speed;
         }
+        // Update hit cooldown timers
         for (let key in bullet.hitCooldown) {
           if (bullet.hitCooldown[key] > 0) {
             bullet.hitCooldown[key]--;
@@ -246,13 +246,13 @@
         }
       }
 
-      // Draw regular bullets (green)
+      // Draw regular bullets (shooting candlesticks, green)
       ctx.fillStyle = "lime";
       for (let bullet of bullets) {
         if (bullet.attached) {
           let enemy = enemies.find(e => e.id === bullet.attachedTo);
           if (enemy) {
-            // Position the bullet using its stored offset
+            // Position bullet based on stored offset (so it remains exactly where it hit)
             bullet.x = enemy.x + bullet.offsetX;
             bullet.y = enemy.y + bullet.offsetY;
           }
@@ -291,7 +291,7 @@
         player.height
       );
 
-      // Process enemies
+      // Process enemies (dropping candlesticks)
       for (let i = enemies.length - 1; i >= 0; i--) {
         let enemy = enemies[i];
 
@@ -306,6 +306,7 @@
             player.charge += 20;
             if (player.charge > 100) player.charge = 100;
 
+            // Process damage based on enemy type
             if (enemy.initialHits === 1) {
               // Small enemy: one hit, immediately knocked back
               enemy.hitsRemaining = 0;
@@ -318,7 +319,7 @@
                 if (enemy.hitsRemaining > 0) {
                   enemy.speed = enemy.baseSpeed * (enemy.hitsRemaining / enemy.initialHits);
                 } else {
-                  // Final required hit: freeze the enemy briefly
+                  // On final required hit, freeze the enemy briefly
                   enemy.freezeTimer = freezeDuration;
                   enemy.pushed = true;
                   enemy.speed = 0;
@@ -329,7 +330,7 @@
                 enemy.speed = enemy.upSpeed * Math.min(enemy.extraHits / maxExtra, 1);
               }
             }
-            // Attach the bullet at its current collision position.
+            // Attach the bullet at the exact collision position:
             bullet.attached = true;
             bullet.attachedTo = enemy.id;
             bullet.offsetX = bullet.x - enemy.x;
@@ -348,7 +349,7 @@
             // With power bullets, immediately knock the enemy back:
             enemy.hitsRemaining = 0;
             enemy.pushed = true;
-            enemy.speed = enemy.upSpeed;  // set to full upward speed
+            enemy.speed = enemy.upSpeed; // full upward speed
 
             pBullet.attached = true;
             pBullet.attachedTo = enemy.id;
@@ -359,19 +360,19 @@
           }
         }
 
-        // Update enemy freeze timer
+        // Update enemy freeze timer (if frozen)
         if (enemy.freezeTimer > 0) {
           enemy.freezeTimer--;
         }
 
-        // Update enemy position: if pushed, move upward; otherwise, move downward.
+        // Update enemy position: if pushed, move upward; otherwise, move downward
         if (enemy.pushed) {
           enemy.y -= enemy.speed;
         } else {
           enemy.y += enemy.speed;
         }
 
-        // Draw enemy using its designated color with a black border.
+        // Draw enemy (dropping candlestick) using its designated color with a black border
         ctx.fillStyle = enemy.color;
         ctx.fillRect(
           enemy.x - enemy.width / 2,
@@ -388,7 +389,7 @@
           enemy.height
         );
 
-        // Remove enemy if off-screen
+        // Remove enemy if it moves off-screen
         if (enemy.y + enemy.height < 0 || enemy.y - enemy.height > canvas.height) {
           enemies.splice(i, 1);
         }
