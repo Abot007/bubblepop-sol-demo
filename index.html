@@ -84,7 +84,7 @@
     // PARTICLE SYSTEM FUNCTIONS
     // ---------------------------
 
-    // Create an impact burst of orange spark particles at (x, y)
+    // Impact particles (spawned on collision) – now in lime (green)
     function spawnImpactParticles(x, y) {
       const numParticles = 8;
       for (let i = 0; i < numParticles; i++) {
@@ -101,12 +101,12 @@
           life: life,
           maxLife: life,
           size: Math.random() * 3 + 2, // size between 2 and 5
-          color: "orange"
+          color: "lime"
         });
       }
     }
 
-    // Spawn a trailing particle for a bullet (lime color)
+    // Spawn a trailing particle for a bullet (lime)
     function spawnBulletTrail(x, y) {
       const angle = Math.random() * Math.PI * 2;
       const speed = Math.random() * 0.5;
@@ -125,13 +125,13 @@
       });
     }
 
-    // Spawn a trailing particle for an enemy (fiery red)
+    // Spawn a trailing particle for an enemy (fiery red, larger and more visible)
     function spawnEnemyTrail(x, y) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = Math.random() * 0.5;
+      const speed = Math.random() * 1;  // Slightly faster
       const vx = Math.cos(angle) * speed;
       const vy = Math.sin(angle) * speed;
-      const life = 20;
+      const life = 40;  // Longer life for visibility
       particles.push({
         x: x,
         y: y,
@@ -139,19 +139,18 @@
         vy: vy,
         life: life,
         maxLife: life,
-        size: Math.random() * 3 + 2,
+        size: Math.random() * 5 + 5, // size between 5 and 10
         color: "red"
       });
     }
 
-    // Update and draw all particles; remove those that expire.
+    // Update and draw all particles.
     function updateParticles() {
       for (let i = particles.length - 1; i >= 0; i--) {
         let p = particles[i];
         p.x += p.vx;
         p.y += p.vy;
         p.life--;
-        // Draw with fading effect based on remaining life.
         ctx.save();
         ctx.globalAlpha = p.life / p.maxLife;
         ctx.fillStyle = p.color;
@@ -164,7 +163,6 @@
         }
       }
     }
-
     // ---------------------------
     // END PARTICLE SYSTEM
     // ---------------------------
@@ -207,7 +205,8 @@
       });
     }
 
-    // Activate the barrage power-up for 5 seconds.
+    // Activate the barrage power-up for 5 seconds:
+    // Spawns barrage bullets rapidly from random positions along the bottom.
     function startBarrage() {
       const barrageDuration = 5000; // 5 seconds in ms
       const spawnInterval = 50;     // spawn one every 50ms
@@ -215,7 +214,7 @@
          let x = Math.random() * canvas.width;
          let bullet = {
               x: x,
-              y: canvas.height - 10,
+              y: canvas.height - 10, // near bottom
               width: 8,
               height: 20,
               speed: 12
@@ -229,20 +228,19 @@
     }
 
     // Draw the candlestick-chart style background.
+    // Horizontal grid lines every 50px; vertical grid lines every 100px.
     function drawBackground() {
       ctx.fillStyle = "#000";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
       ctx.strokeStyle = "rgba(255,255,255,0.1)";
       ctx.lineWidth = 1;
-      // Horizontal grid lines every 50px.
       for (let y = 0; y <= canvas.height; y += 50) {
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(canvas.width, y);
         ctx.stroke();
       }
-      // Vertical grid lines every 100px.
       for (let x = 0; x <= canvas.width; x += 100) {
         ctx.beginPath();
         ctx.moveTo(x, 0);
@@ -333,7 +331,7 @@
       
       drawBackground();
 
-      // Display score and life.
+      // Draw score and life.
       ctx.fillStyle = "white";
       ctx.font = "20px Orbitron";
       ctx.fillText("Score: " + score, 10, 30);
@@ -376,12 +374,11 @@
         let bullet = bullets[i];
         if (!bullet.attached) {
           bullet.y -= bullet.speed;
-          // Spawn a bullet trail particle.
+          // Spawn bullet trail for regular bullets.
           if (Math.random() < 0.3) {
             spawnBulletTrail(bullet.x, bullet.y);
           }
         } else {
-          // If attached, update position relative to its enemy.
           let enemy = enemies.find(e => e.id === bullet.attachedTo);
           if (enemy) {
             bullet.x = enemy.x + bullet.offsetX;
@@ -404,6 +401,10 @@
       for (let i = barrageBullets.length - 1; i >= 0; i--) {
         let b = barrageBullets[i];
         b.y -= b.speed;
+        // Spawn trail for barrage bullets.
+        if (Math.random() < 0.3) {
+          spawnBulletTrail(b.x, b.y);
+        }
         for (let j = enemies.length - 1; j >= 0; j--) {
           let enemy = enemies[j];
           if (rectIntersect(b, enemy)) {
@@ -453,8 +454,8 @@
       for (let i = enemies.length - 1; i >= 0; i--) {
         let enemy = enemies[i];
 
-        // Spawn enemy trail particles.
-        if (Math.random() < 0.2) {
+        // Spawn enemy trail particles more frequently.
+        if (Math.random() < 0.5) {
           spawnEnemyTrail(enemy.x, enemy.y);
         }
 
@@ -465,12 +466,10 @@
             rectIntersect(bullet, enemy) &&
             !(enemy.id in bullet.hitCooldown)
           ) {
-            // Increase player's charge by 5 per hit.
             player.charge += 5;
             if (player.charge > 100) player.charge = 100;
-            // Spawn impact spark particles.
+            // Spawn impact particles (now in lime)
             spawnImpactParticles(bullet.x, bullet.y);
-            // Process enemy damage.
             if (enemy.initialHits === 1) {
               enemy.hitsRemaining = 0;
               enemy.pushed = true;
@@ -491,7 +490,6 @@
                 enemy.speed = enemy.upSpeed * Math.min(enemy.extraHits / maxExtra, 1);
               }
             }
-            // Attach the bullet.
             bullet.attached = true;
             bullet.attachedTo = enemy.id;
             bullet.offsetX = bullet.x - enemy.x;
@@ -501,19 +499,15 @@
           }
         }
 
-        // Update enemy freeze timer.
         if (enemy.freezeTimer > 0) {
           enemy.freezeTimer--;
         }
-
-        // Update enemy position.
         if (enemy.pushed) {
           enemy.y -= enemy.speed;
         } else {
           enemy.y += enemy.speed;
         }
-
-        // Check if enemy is off-screen.
+        // If enemy is pushed off the top, add score.
         if (enemy.y + enemy.height/2 < 0) {
           let points = 0;
           if (enemy.initialHits === 1) points = 10;
@@ -523,6 +517,7 @@
           enemies.splice(i, 1);
           continue;
         }
+        // If enemy reaches the bottom, deduct life.
         if (enemy.y - enemy.height/2 > canvas.height) {
           let damage = 0;
           if (enemy.initialHits === 1) damage = 5;
@@ -532,8 +527,6 @@
           enemies.splice(i, 1);
           continue;
         }
-
-        // Draw enemy.
         ctx.fillStyle = enemy.color;
         ctx.fillRect(
           enemy.x - enemy.width / 2,
@@ -551,10 +544,8 @@
         );
       }
 
-      // Update and draw particles.
       updateParticles();
 
-      // Check for game over.
       if (life <= 0) {
         gameOver = true;
       }
@@ -562,10 +553,8 @@
       requestAnimationFrame(update);
     }
 
-    // Start the game loop.
     update();
 
-    // Resize canvas on window resize.
     window.addEventListener("resize", function() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
